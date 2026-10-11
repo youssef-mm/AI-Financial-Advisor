@@ -25,6 +25,18 @@ with st.sidebar:
     st.markdown("---")
     target_goal = st.text_input("Do you have a specific financial goal?", placeholder="e.g., Buy a laptop for 35,000 EGP")
     
+    model_choice = st.selectbox(
+        "🤖 Select AI Model:",
+        [
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "llama3-70b-8192",
+            "mixtral-8x7b-32768",
+        ],
+        index=0,
+        help="llama-3.1-8b-instant provides instant responses and is standard on Groq Free Tier."
+    )
+    
     # API Key Configuration: Check env first, then st.secrets, then sidebar input
     default_key = os.environ.get("GROQ_API_KEY", "")
     if not default_key:
@@ -80,12 +92,6 @@ if run_button:
         st.error("⚠️ Groq API Key required: Please enter your key in the sidebar or add it to Streamlit Secrets.")
         st.stop()
     
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        api_key=groq_api_key,
-        temperature=0.1
-    )
-    
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", """You are an expert financial advisor. 
         Analyze the budget and provide practical, actionable advice in English, structured clearly into:
@@ -101,24 +107,47 @@ if run_button:
         Financial Goal: {target_goal}
         """)
     ])
-    
-    chain = prompt_template | llm
 
-    with st.spinner("🧠 The advisor is analyzing your budget now (in seconds)..."):
-        try:
-            response = chain.invoke({
-                "income": income,
-                "total_expenses": total_expenses,
-                "balance": balance,
-                "rent": rent,
-                "food": food,
-                "transport": transport,
-                "others": others,
-                "target_goal": target_goal if target_goal else "No specific goal mentioned."
-            })
-            
+    with st.spinner("🧠 The advisor is analyzing your budget now..."):
+        # Order of models to try in case selected model is retired or unavailable
+        models_to_try = [model_choice]
+        fallback_models = ["llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768", "llama-3.3-70b-versatile"]
+        for m in fallback_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
+
+        response = None
+        last_error = None
+        used_model = model_choice
+
+        for current_model in models_to_try:
+            try:
+                llm = ChatGroq(
+                    model=current_model,
+                    api_key=groq_api_key,
+                    temperature=0.1
+                )
+                chain = prompt_template | llm
+                response = chain.invoke({
+                    "income": income,
+                    "total_expenses": total_expenses,
+                    "balance": balance,
+                    "rent": rent,
+                    "food": food,
+                    "transport": transport,
+                    "others": others,
+                    "target_goal": target_goal if target_goal else "No specific goal mentioned."
+                })
+                used_model = current_model
+                break
+            except Exception as e:
+                last_error = e
+                continue
+
+        if response:
+            if used_model != model_choice:
+                st.info(f"💡 Switched to fallback model `{used_model}` because `{model_choice}` was unavailable on Groq.")
             st.subheader("💡 Financial Advisor Recommendations:")
             st.markdown(response.content)
-            
-        except Exception as e:
-            st.error(f"An error occurred while processing the data: {e}")
+        else:
+            st.error(f"An error occurred while processing the data: {last_error}")
