@@ -25,6 +25,21 @@ with st.sidebar:
     st.markdown("---")
     target_goal = st.text_input("Do you have a specific financial goal?", placeholder="e.g., Buy a laptop for 35,000 EGP")
     
+    # API Key Configuration: Check env first, then st.secrets, then sidebar input
+    default_key = os.environ.get("GROQ_API_KEY", "")
+    if not default_key:
+        try:
+            default_key = st.secrets.get("GROQ_API_KEY", "")
+        except Exception:
+            default_key = ""
+
+    if not default_key:
+        st.markdown("---")
+        groq_api_key_input = st.text_input("🔑 Groq API Key:", type="password", placeholder="gsk_...", help="Get your free key from console.groq.com")
+    else:
+        groq_api_key_input = default_key
+
+    st.markdown("---")
     run_button = st.button("Analyze Budget 🚀")
 
 # ==========================================
@@ -59,10 +74,10 @@ st.markdown("---")
 # 4. AI Engine (Groq & Llama)
 # ==========================================
 if run_button:
-    groq_api_key = os.environ.get("GROQ_API_KEY")
+    groq_api_key = groq_api_key_input.strip() if groq_api_key_input else ""
     
     if not groq_api_key:
-        st.error("⚠️ Internal Error: Groq API Key not found in the system.")
+        st.error("⚠️ Groq API Key required: Please enter your key in the sidebar or add it to Streamlit Secrets.")
         st.stop()
     
     llm = ChatGroq(
